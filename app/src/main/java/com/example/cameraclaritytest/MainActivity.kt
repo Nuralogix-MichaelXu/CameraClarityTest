@@ -1,6 +1,7 @@
 package com.example.cameraclaritytest
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
                     var resetFlag by remember { mutableStateOf(0) }
                     // 新增：已通过状态
                     var passed by remember { mutableStateOf(false) }
+                    var updateFlag by remember { mutableStateOf(0) }
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -80,7 +82,6 @@ class MainActivity : ComponentActivity() {
                                 .padding(innerPadding),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // 传递isEditing到GreetingWithInput
                             GreetingWithInput(
                                 name = "MMA摄像头清晰度测试",
                                 modifier = Modifier.padding(50.dp),
@@ -89,7 +90,8 @@ class MainActivity : ComponentActivity() {
                                 qrCount = qrCount,
                                 resetFlag = resetFlag,
                                 passed = passed,
-                                onPassedChanged = { passed = it }
+                                onPassedChanged = { passed = it },
+                                updateFlag = updateFlag
                             )
                         }
                         Column(
@@ -109,7 +111,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             if (showCamera) {
-                                CameraPreview(onQrCountChanged = { qrCount = it })
+                                CameraPreview(onQrCountChanged = { count ->
+                                    qrCount = count
+                                    updateFlag++
+                                })
                             }
                         }
                         // 页面底部重置按钮
@@ -144,6 +149,26 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+                        // 页面底部版本号显示
+                        val versionName = try {
+                            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                            pInfo.versionName ?: ""
+                        } catch (e: Exception) {
+                            ""
+                        }
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "版本号：$versionName",
+                                color = Color(0xFF42A5F5),
+                                fontSize = 8.sp
+                            )
+                        }
                     }
                 }
             }
@@ -151,6 +176,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@SuppressLint("CoroutineCreationDuringComposition")
 @Composable
 fun GreetingWithInput(
     name: String,
@@ -160,7 +186,8 @@ fun GreetingWithInput(
     qrCount: Int,
     resetFlag: Int,
     passed: Boolean,
-    onPassedChanged: (Boolean) -> Unit
+    onPassedChanged: (Boolean) -> Unit,
+    updateFlag: Int
 ) {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
@@ -208,37 +235,38 @@ fun GreetingWithInput(
                 )
             }
             Spacer(modifier = Modifier.width(200.dp))
-            // 计算阈值
-            val threshold = inputValue.toIntOrNull() ?: 0
             // 动态点动画
             var dotCount by remember { mutableStateOf(0) }
             // 计时器状态
             var thresholdReachedTime by remember(resetFlag) { mutableStateOf<Long?>(null) }
-            val now = System.currentTimeMillis()
-            if (showCamera && !passed && threshold > 0) {
-                if (qrCount >= threshold) {
-                    if (thresholdReachedTime == null) {
-                        thresholdReachedTime = now
-                    } else if (now - thresholdReachedTime!! >= 5000) {
-                        onPassedChanged(true)
+            LaunchedEffect(updateFlag) {
+                val threshold = inputValue.toIntOrNull() ?: 0
+                val now = System.currentTimeMillis()
+                if (showCamera && !passed && threshold > 0) {
+                    if (qrCount >= threshold) {
+                        if (thresholdReachedTime == null) {
+                            thresholdReachedTime = now
+                        } else if (now - thresholdReachedTime!! >= 5000) {
+                            onPassedChanged(true)
+                        }
+                    } else {
+                        thresholdReachedTime = null
                     }
                 } else {
                     thresholdReachedTime = null
                 }
-            } else if (!showCamera) {
-                thresholdReachedTime = null
-                onPassedChanged(false)
             }
-            if (showCamera && !passed && qrCount < threshold) {
-                LaunchedEffect(showCamera, qrCount, threshold) {
-                    while (showCamera && !passed && qrCount < threshold) {
+            if (showCamera && !passed) {
+                LaunchedEffect(showCamera) {
+                    while (showCamera) {
                         dotCount = (dotCount + 1) % 4
                         delay(500)
                     }
                 }
-            } else if (!showCamera || passed) {
+            } else {
                 dotCount = 0
             }
+
             val statusText = when {
                 passed -> "已通过"
                 showCamera -> "检测中" + ".".repeat(dotCount)
@@ -264,7 +292,8 @@ fun GreetingWithInput(
 fun CameraPreview(onQrCountChanged: (Int) -> Unit) {
     val lastAnalysisTime = AtomicLong(0L)
     var qrCount by remember { mutableStateOf(0) }
-    LaunchedEffect(qrCount) {
+    var updateFlag by remember { mutableStateOf(0) }
+    LaunchedEffect(qrCount, updateFlag) {
         onQrCountChanged(qrCount)
     }
     Box(
@@ -326,8 +355,7 @@ fun CameraPreview(onQrCountChanged: (Int) -> Unit) {
                                             if (task.isSuccessful) {
                                                 val barcodeTask = task // 无需强制类型转换
                                                 val barcodes = barcodeTask.result ?: emptyList()
-//                                                println("allBarcodes: $barcodes") // 打印所有非空二维码字符串
-                                                println("allBarcodes: ${barcodes.size}") // 打印所有非空二维码字符串
+//                                                println("allBarcodes: ${barcodes.size}") // 打印所有非空二维码字符串
                                                 barcodes.forEach { barcode ->
                                                     val rawValue = try {
                                                         val method = barcode.javaClass.getMethod("getRawValue")
@@ -341,6 +369,7 @@ fun CameraPreview(onQrCountChanged: (Int) -> Unit) {
                                         }
                                         val filteredBarcodes = allBarcodes.filter { it.isNotEmpty() }
                                         qrCount = filteredBarcodes.size
+                                        updateFlag++
                                     }
                                     .addOnCompleteListener { imageProxy.close() }
                             } else {
