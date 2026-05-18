@@ -2,49 +2,47 @@ package com.example.cameraclaritytest
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
-import kotlinx.coroutines.delay
-import androidx.compose.ui.Modifier
-import com.example.cameraclaritytest.ui.theme.CameraClarityTestTheme
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.Alignment
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ExperimentalGetImage
-import java.util.concurrent.atomic.AtomicLong
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.sp
-import android.content.Context
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.material3.TextField
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import com.example.cameraclaritytest.ui.theme.CameraClarityTestTheme
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.delay
+import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : ComponentActivity() {
     @ExperimentalGetImage
@@ -237,6 +235,10 @@ fun GreetingWithInput(
             Spacer(modifier = Modifier.width(200.dp))
             // 动态点动画
             var dotCount by remember { mutableStateOf(0) }
+            // 检测通过的时间，单位秒
+            val passTime = 5
+            // 倒计时显示，单位秒
+            var countdown by remember(resetFlag) { mutableStateOf(passTime) }
             // 计时器状态
             var thresholdReachedTime by remember(resetFlag) { mutableStateOf<Long?>(null) }
             LaunchedEffect(updateFlag) {
@@ -246,14 +248,19 @@ fun GreetingWithInput(
                     if (qrCount >= threshold) {
                         if (thresholdReachedTime == null) {
                             thresholdReachedTime = now
-                        } else if (now - thresholdReachedTime!! >= 5000) {
+                        } else if (now - thresholdReachedTime!! >= passTime * 1000) {
                             onPassedChanged(true)
+                        }
+                        if (thresholdReachedTime != null) {
+                            countdown = passTime - ((now - thresholdReachedTime!!) / 1000).toInt()
                         }
                     } else {
                         thresholdReachedTime = null
+                        countdown = passTime
                     }
                 } else {
                     thresholdReachedTime = null
+                    countdown = passTime
                 }
             }
             if (showCamera && !passed) {
@@ -269,7 +276,7 @@ fun GreetingWithInput(
 
             val statusText = when {
                 passed -> "已通过"
-                showCamera -> "检测中" + ".".repeat(dotCount)
+                showCamera -> "检测中(${countdown})" + ".".repeat(dotCount)
                 else -> "待开始"
             }
             val statusColor = when {
@@ -281,7 +288,7 @@ fun GreetingWithInput(
                 text = statusText,
                 fontSize = 25.sp,
                 color = statusColor,
-                modifier = Modifier.width(100.dp)
+                modifier = Modifier.width(150.dp)
             )
         }
     }
